@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "canvas": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/canvas/canvas_mcp_server.py"]
+    },
+    "canvas-viz": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/servers/visualization/visualization_mcp_server.py"]
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Canvas credentials — never commit
+.env
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
