@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Assignment Averages</title>
+<style>
+  :root {
+    --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --hairline:rgba(11,11,11,.10);
+    --s1:#2a78d6; --wash:rgba(11,11,11,.045);
+  }
+  :root[data-theme="dark"] {
+    --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --hairline:rgba(255,255,255,.10);
+    --s1:#3987e5; --wash:rgba(255,255,255,.06);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    background:var(--surface); color:var(--ink); padding:16px;
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .sub { color:var(--ink-2); font-size:12px; margin-top:2px; }
+  .controls { display:flex; gap:8px; align-items:center; margin:12px 0 8px; }
+  .controls label { color:var(--ink-2); font-size:12px; }
+  select {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:3px 6px; font:inherit; font-size:12px;
+  }
+  #rows { position:relative; }
+  .row {
+    display:grid; grid-template-columns:minmax(90px, 180px) 1fr; gap:10px;
+    align-items:center; height:30px; border-radius:6px; padding:0 4px;
+  }
+  .row:hover { background:var(--wash); }
+  .name {
+    color:var(--ink-2); font-size:12px; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; text-align:right;
+  }
+  .trackzone { position:relative; height:100%; display:flex; align-items:center; }
+  .fill { height:18px; background:var(--s1); border-radius:0 4px 4px 0; flex:none; min-width:2px; }
+  .val { color:var(--ink-2); font-size:12px; margin-left:7px; font-variant-numeric:tabular-nums; }
+  #maxline { position:absolute; top:0; bottom:0; width:0; border-left:1px solid var(--axis); pointer-events:none; }
+  #maxlbl { color:var(--muted); font-size:10.5px; text-align:left; margin:2px 0 0; position:relative; height:14px; }
+  #maxlbl span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
+  #tip {
+    position:fixed; pointer-events:none; display:none; z-index:2;
+    background:var(--surface); border:1px solid var(--hairline); border-radius:8px;
+    box-shadow:0 2px 10px rgba(0,0,0,.18); padding:6px 9px; max-width:280px;
+  }
+  #tip .v { font-weight:600; font-size:13px; }
+  #tip .k { color:var(--ink-2); font-size:11px; }
+  details { margin-top:12px; }
+  summary { color:var(--ink-2); font-size:12px; cursor:pointer; }
+  table { border-collapse:collapse; margin-top:6px; font-size:12px; }
+  th, td { text-align:left; padding:3px 14px 3px 0; border-bottom:1px solid var(--grid); }
+  th { color:var(--ink-2); font-weight:500; }
+  td.num { font-variant-numeric:tabular-nums; }
+  #empty { color:var(--muted); padding:28px 0; font-size:12px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Average Score by Assignment</h1>
+    <div class="sub" id="sub"></div>
+  </header>
+  <div id="app" hidden>
+    <div class="controls">
+      <label for="sort">Sort</label>
+      <select id="sort">
+        <option value="orig" selected>Course order</option>
+        <option value="desc">Highest first</option>
+        <option value="asc">Lowest first</option>
+      </select>
+    </div>
+    <div id="chart">
+      <div id="rows"></div>
+      <div id="maxlbl"></div>
+    </div>
+    <details>
+      <summary>Data table</summary>
+      <table><thead><tr><th>Assignment</th><th>Average</th></tr></thead><tbody id="tbody"></tbody></table>
+    </details>
+  </div>
+  <div id="empty">Waiting for chart data&hellip;</div>
+  <div id="tip"></div>
+
+<script>/*__MCP_BRIDGE__*/</script>
+<script>
+"use strict";
+(function () {
+  var data = null; // { items: [{name, avg}], max: number|null, title }
+
+  function $(id) { return document.getElementById(id); }
+  function fmt(n) {
+    return Math.abs(n - Math.round(n)) < 1e-9 ? String(Math.round(n)) : n.toFixed(1);
+  }
+
+  function render() {
+    if (!data) return;
+    $("app").hidden = false;
+    $("empty").hidden = true;
+    if (data.title) { $("title").textContent = data.title; document.title = data.title; }
+    $("sub").textContent = data.items.length + " assignment" + (data.items.length === 1 ? "" : "s") +
+      (data.max != null ? " · out of " + fmt(data.max) : "");
+
+    var items = data.items.slice();
+    var mode = $("sort").value;
+    if (mode === "desc") items.sort(function (a, b) { return b.avg - a.avg; });
+    if (mode === "asc") items.sort(function (a, b) { return a.avg - b.avg; });
+
+    var top = Math.max.apply(null, items.map(function (d) { return d.avg; }));
+    if (data.max != null) top = Math.max(top, data.max);
+    if (top <= 0) top = 1;
+
+    var rows = $("rows");
+    rows.replaceChildren();
+    var tip = $("tip");
+
+    items.forEach(function (d) {
+      var row = document.createElement("div"); row.className = "row";
+      var name = document.createElement("div"); name.className = "name";
+      name.textContent = d.name; name.title = d.name;
+      var zone = document.createElement("div"); zone.className = "trackzone";
+      var fill = document.createElement("div"); fill.className = "fill";
+      fill.style.width = Math.max(0.5, 100 * d.avg / top) + "%";
+      var val = document.createElement("span"); val.className = "val";
+      val.textContent = fmt(d.avg);
+      zone.append(fill, val);
+      row.append(name, zone);
+      row.addEventListener("pointermove", function (ev) {
+        tip.replaceChildren();
+        var v = document.createElement("div"); v.className = "v";
+        v.textContent = fmt(d.avg) + (data.max != null ? " / " + fmt(data.max) : "");
+        var k = document.createElement("div"); k.className = "k";
+        k.textContent = d.name + (data.max != null && data.max > 0
+          ? " · " + Math.round(100 * d.avg / data.max) + "%" : "");
+        tip.append(v, k);
+        tip.style.display = "block";
+        tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 6) + "px";
+        tip.style.top = (ev.clientY - 38) + "px";
+      });
+      row.addEventListener("pointerleave", function () { tip.style.display = "none"; });
+      rows.appendChild(row);
+    });
+
+    // reference hairline at max points, drawn over the bar zone only
+    var oldLine = document.getElementById("maxline");
+    if (oldLine) oldLine.remove();
+    var lbl = $("maxlbl");
+    lbl.replaceChildren();
+    if (data.max != null && rows.firstChild) {
+      var zone0 = rows.firstChild.querySelector(".trackzone");
+      var pct = Math.min(100, 100 * data.max / top);
+      var line = document.createElement("div"); line.id = "maxline";
+      var left = zone0.offsetLeft + zone0.offsetWidth * pct / 100;
+      line.style.left = left + "px";
+      rows.appendChild(line);
+      var span = document.createElement("span");
+      span.textContent = "max " + fmt(data.max);
+      span.style.left = left + "px";
+      lbl.appendChild(span);
+    }
+
+    var tb = $("tbody");
+    tb.replaceChildren();
+    items.forEach(function (d) {
+      var tr = document.createElement("tr");
+      var c1 = document.createElement("td"); c1.textContent = d.name;
+      var c2 = document.createElement("td"); c2.className = "num"; c2.textContent = fmt(d.avg);
+      tr.append(c1, c2);
+      tb.appendChild(tr);
+    });
+    if (window.MCPApp) MCPApp.reportSize();
+  }
+
+  function setData(args) {
+    if (!args || !Array.isArray(args.assignment_names) || !Array.isArray(args.averages)) return;
+    var n = Math.min(args.assignment_names.length, args.averages.length);
+    if (!n) return;
+    var items = [];
+    for (var i = 0; i < n; i++) {
+      var v = Number(args.averages[i]);
+      if (isFinite(v)) items.push({ name: String(args.assignment_names[i]), avg: v });
+    }
+    if (!items.length) return;
+    data = {
+      items: items,
+      max: args.max_points != null && isFinite(Number(args.max_points)) ? Number(args.max_points) : null,
+      title: args.title ? String(args.title) : null
+    };
+    render();
+  }
+
+  $("sort").addEventListener("change", render);
+  window.addEventListener("resize", render);
+
+  MCPApp.connect({ name: "assignment-averages", version: "1.0.0" }, {
+    onToolInput: function (p) { setData(p.arguments || {}); },
+    onHostContextChanged: function () { render(); }
+  });
+})();
+</script>
+</body>
+</html>

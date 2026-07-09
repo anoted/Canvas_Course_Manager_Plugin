@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Course Progress</title>
+<style>
+  :root {
+    --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --hairline:rgba(11,11,11,.10);
+    --s1:#2a78d6; --track:#b7d3f6;
+  }
+  :root[data-theme="dark"] {
+    --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --hairline:rgba(255,255,255,.10);
+    --s1:#3987e5; --track:#104281;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    background:var(--surface); color:var(--ink); padding:16px;
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .wrap { display:flex; align-items:center; gap:26px; margin-top:12px; flex-wrap:wrap; }
+  #donut { position:relative; width:190px; height:190px; }
+  #donut svg { display:block; }
+  .center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+  .center .pct { font-size:30px; font-weight:600; }
+  .center .frac { color:var(--ink-2); font-size:12px; margin-top:2px; }
+  .legend { display:flex; flex-direction:column; gap:10px; }
+  .legend .row { display:flex; align-items:center; gap:8px; }
+  .sw { width:12px; height:12px; border-radius:3px; flex:none; }
+  .legend .name { color:var(--ink-2); min-width:76px; }
+  .legend .val { font-weight:600; }
+  #tip {
+    position:fixed; pointer-events:none; display:none; z-index:2;
+    background:var(--surface); border:1px solid var(--hairline); border-radius:8px;
+    box-shadow:0 2px 10px rgba(0,0,0,.18); padding:6px 9px;
+  }
+  #tip .v { font-weight:600; font-size:13px; }
+  #tip .k { color:var(--ink-2); font-size:11px; }
+  details { margin-top:12px; }
+  summary { color:var(--ink-2); font-size:12px; cursor:pointer; }
+  table { border-collapse:collapse; margin-top:6px; font-size:12px; }
+  th, td { text-align:left; padding:3px 14px 3px 0; border-bottom:1px solid var(--grid); }
+  th { color:var(--ink-2); font-weight:500; }
+  td.num { font-variant-numeric:tabular-nums; }
+  #empty { color:var(--muted); padding:28px 0; font-size:12px; }
+</style>
+</head>
+<body>
+  <h1 id="title">Course Progress</h1>
+  <div id="app" hidden>
+    <div class="wrap">
+      <div id="donut">
+        <div class="center"><div class="pct" id="pct"></div><div class="frac" id="frac"></div></div>
+      </div>
+      <div class="legend">
+        <div class="row"><span class="sw" id="swDone"></span><span class="name">Completed</span><span class="val" id="vDone"></span></div>
+        <div class="row"><span class="sw" id="swPend"></span><span class="name">Pending</span><span class="val" id="vPend"></span></div>
+      </div>
+    </div>
+    <details>
+      <summary>Data table</summary>
+      <table><thead><tr><th>Status</th><th>Items</th><th>Share</th></tr></thead><tbody id="tbody"></tbody></table>
+    </details>
+  </div>
+  <div id="empty">Waiting for chart data&hellip;</div>
+  <div id="tip"></div>
+
+<script>/*__MCP_BRIDGE__*/</script>
+<script>
+"use strict";
+(function () {
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var data = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  function arcPath(cx, cy, r, a0, a1) {
+    var x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+    var x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    var large = a1 - a0 > Math.PI ? 1 : 0;
+    return "M" + x0 + "," + y0 + " A" + r + "," + r + " 0 " + large + " 1 " + x1 + "," + y1;
+  }
+
+  function render() {
+    if (!data) return;
+    $("app").hidden = false;
+    $("empty").hidden = true;
+    var done = data.completed, total = data.total, pend = total - done;
+    var pct = Math.round(100 * done / total);
+    if (data.title) { $("title").textContent = data.title; document.title = data.title; }
+    $("pct").textContent = pct + "%";
+    $("frac").textContent = done + " of " + total;
+    $("vDone").textContent = String(done);
+    $("vPend").textContent = String(pend);
+
+    var css = getComputedStyle(document.documentElement);
+    var cDone = css.getPropertyValue("--s1").trim();
+    var cPend = css.getPropertyValue("--track").trim();
+    $("swDone").style.background = cDone;
+    $("swPend").style.background = cPend;
+
+    var holder = $("donut");
+    var old = holder.querySelector("svg");
+    if (old) old.remove();
+
+    var S = 190, cx = S / 2, cy = S / 2, r = 76, sw = 26;
+    var svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + S + " " + S);
+    svg.setAttribute("width", S); svg.setAttribute("height", S);
+
+    var tip = $("tip");
+    function slice(a0, a1, color, label, n) {
+      var p = document.createElementNS(SVGNS, "path");
+      p.setAttribute("d", arcPath(cx, cy, r, a0, a1));
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", color);
+      p.setAttribute("stroke-width", sw);
+      p.addEventListener("pointermove", function (ev) {
+        p.style.opacity = ".82";
+        tip.replaceChildren();
+        var v = document.createElement("div"); v.className = "v"; v.textContent = String(n);
+        var k = document.createElement("div"); k.className = "k";
+        k.textContent = label + " · " + Math.round(100 * n / total) + "%";
+        tip.append(v, k);
+        tip.style.display = "block";
+        tip.style.left = (ev.clientX + 12) + "px";
+        tip.style.top = (ev.clientY - 34) + "px";
+      });
+      p.addEventListener("pointerleave", function () { p.style.opacity = "1"; tip.style.display = "none"; });
+      svg.appendChild(p);
+    }
+
+    var start = -Math.PI / 2;
+    var gap = done === 0 || pend === 0 ? 0 : 2.5 / r; // ~2px surface gap at both joins
+    var aDone = 2 * Math.PI * (done / total);
+    if (done > 0) slice(start + gap / 2, start + aDone - gap / 2, cDone, "Completed", done);
+    if (pend > 0) slice(start + aDone + gap / 2, start + 2 * Math.PI - gap / 2, cPend, "Pending", pend);
+
+    holder.appendChild(svg);
+
+    var tb = $("tbody");
+    tb.replaceChildren();
+    [["Completed", done], ["Pending", pend]].forEach(function (row) {
+      var tr = document.createElement("tr");
+      var c1 = document.createElement("td"); c1.textContent = row[0];
+      var c2 = document.createElement("td"); c2.className = "num"; c2.textContent = String(row[1]);
+      var c3 = document.createElement("td"); c3.className = "num";
+      c3.textContent = Math.round(100 * row[1] / total) + "%";
+      tr.append(c1, c2, c3);
+      tb.appendChild(tr);
+    });
+    if (window.MCPApp) MCPApp.reportSize();
+  }
+
+  function setData(args) {
+    if (!args) return;
+    var completed = Number(args.completed), total = Number(args.total);
+    if (!isFinite(completed) || !isFinite(total) || total <= 0 || completed < 0 || completed > total) return;
+    data = { completed: completed, total: total, title: args.title ? String(args.title) : null };
+    render();
+  }
+
+  MCPApp.connect({ name: "course-progress", version: "1.0.0" }, {
+    onToolInput: function (p) { setData(p.arguments || {}); },
+    onHostContextChanged: function () { render(); }
+  });
+})();
+</script>
+</body>
+</html>

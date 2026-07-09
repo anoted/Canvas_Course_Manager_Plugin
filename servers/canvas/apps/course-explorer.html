@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Course Explorer</title>
+<style>
+  :root {
+    --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --hairline:rgba(11,11,11,.10);
+    --accent:#2a78d6; --good:#006300; --warn:#8a6100; --crit:#d03b3b;
+    --wash:rgba(11,11,11,.045);
+  }
+  :root[data-theme="dark"] {
+    --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --hairline:rgba(255,255,255,.10);
+    --accent:#3987e5; --good:#0ca30c; --warn:#fab219; --crit:#e66767;
+    --wash:rgba(255,255,255,.06);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    background:var(--surface); color:var(--ink); padding:14px 16px 16px;
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .ttl { font-size:15px; font-weight:600; margin-right:auto; }
+  select, input[type="text"], input[type="search"] {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:4px 7px; font:inherit; font-size:12px; max-width:280px;
+  }
+  .btn {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:3px 9px; font:inherit; font-size:12px; cursor:pointer;
+  }
+  .btn:hover:not(:disabled) { background:var(--wash); }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  nav { display:flex; gap:2px; margin:12px 0 0; border-bottom:1px solid var(--grid); flex-wrap:wrap; }
+  nav button {
+    background:none; border:none; border-bottom:2px solid transparent; cursor:pointer;
+    color:var(--ink-2); font:inherit; font-size:12.5px; padding:6px 10px;
+  }
+  nav button:hover { color:var(--ink); }
+  nav button.on { color:var(--ink); border-bottom-color:var(--accent); font-weight:600; }
+  main { margin-top:12px; min-height:60px; }
+  table { border-collapse:collapse; width:100%; font-size:12.5px; }
+  th, td { text-align:left; padding:5px 10px 5px 0; border-bottom:1px solid var(--grid); vertical-align:top; }
+  th { color:var(--ink-2); font-weight:500; font-size:11.5px; }
+  td.num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.actions { white-space:nowrap; text-align:right; }
+  .badge { font-size:11px; white-space:nowrap; }
+  .badge.pub { color:var(--good); }
+  .badge.draft { color:var(--warn); }
+  .muted { color:var(--muted); }
+  .dim { color:var(--ink-2); }
+  .card { border:1px solid var(--grid); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .card .hd { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .card .hd .nm { font-weight:600; margin-right:auto; }
+  .item { display:flex; gap:8px; align-items:baseline; padding:3px 0 3px 8px; border-top:1px solid var(--grid); }
+  .item:first-of-type { margin-top:6px; }
+  .chip {
+    font-size:10.5px; color:var(--ink-2); border:1px solid var(--hairline);
+    border-radius:10px; padding:0 7px; white-space:nowrap;
+  }
+  .linkish { cursor:pointer; }
+  .linkish:hover { color:var(--accent); text-decoration:underline; }
+  pre.preview {
+    background:var(--wash); border:1px solid var(--grid); border-radius:6px;
+    padding:8px 10px; white-space:pre-wrap; word-break:break-word;
+    font:11.5px/1.5 ui-monospace,Consolas,monospace; max-height:280px; overflow:auto; margin:6px 0;
+  }
+  .subwrap { background:var(--wash); border-radius:6px; padding:6px 10px; margin:4px 0 8px; }
+  input.grade { width:56px; }
+  input.comment { width:180px; }
+  .note { color:var(--muted); padding:18px 0; font-size:12px; }
+  #toast {
+    position:fixed; left:16px; bottom:12px; right:16px; z-index:5; display:none;
+    background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--good);
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:7px 11px; font-size:12.5px;
+  }
+  #toast.err { border-left-color:var(--crit); }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <div class="ttl">Course Explorer</div>
+    <select id="courseSel" title="Course"></select>
+    <button class="btn" id="reload" title="Reload this tab">Refresh</button>
+  </header>
+  <nav id="tabs"></nav>
+  <main id="content"><div class="note">Loading courses&hellip;</div></main>
+  <div id="toast"></div>
+
+<script>/*__MCP_BRIDGE__*/</script>
+<script>
+"use strict";
+(function () {
+  var state = { courses: [], courseId: null, tab: "modules", cache: {}, booted: false };
+
+  var TABS = [
+    { id: "modules", label: "Modules" },
+    { id: "assignments", label: "Assignments" },
+    { id: "quizzes", label: "Quizzes" },
+    { id: "pages", label: "Pages" },
+    { id: "announcements", label: "Announcements" },
+    { id: "files", label: "Files" },
+    { id: "students", label: "Students" }
+  ];
+
+  function $(id) { return document.getElementById(id); }
+
+  function h(tag, cls) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    for (var i = 2; i < arguments.length; i++) {
+      var k = arguments[i];
+      if (k !== null && k !== undefined) e.append(k);
+    }
+    return e;
+  }
+
+  function toast(msg, isErr) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = isErr ? "err" : "";
+    t.style.display = "block";
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.style.display = "none"; }, isErr ? 7000 : 3500);
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    return isNaN(d) ? String(iso) : d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+
+  function fmtSize(b) {
+    if (b == null) return "—";
+    if (b < 1024) return b + " B";
+    if (b < 1048576) return (b / 1024).toFixed(0) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+
+  function badge(published) {
+    return h("span", "badge " + (published ? "pub" : "draft"), published ? "● published" : "○ draft");
+  }
+
+  function btn(label, fn, primary) {
+    var b = h("button", "btn" + (primary ? " primary" : ""), label);
+    b.addEventListener("click", function () {
+      b.disabled = true;
+      var old = b.textContent;
+      b.textContent = "…";
+      Promise.resolve()
+        .then(function () { return fn(b); })
+        .catch(function (e) { toast((e && e.message) || String(e), true); })
+        .then(function () { b.disabled = false; b.textContent = old; sized(); });
+    });
+    return b;
+  }
+
+  function table(headers, rows) {
+    var t = h("table"), tr = h("tr");
+    headers.forEach(function (x) { tr.appendChild(h("th", null, x)); });
+    t.appendChild(h("thead", null, tr));
+    var tb = h("tbody");
+    rows.forEach(function (r) { tb.appendChild(r); });
+    t.appendChild(tb);
+    return t;
+  }
+
+  function td(cls) {
+    var c = h("td", cls || null);
+    for (var i = 1; i < arguments.length; i++) {
+      var k = arguments[i];
+      if (k !== null && k !== undefined) c.append(k);
+    }
+    return c;
+  }
+
+  function sized() { if (window.MCPApp) MCPApp.reportSize(); }
+
+  function call(tool, args) { return MCPApp.callTool(tool, args).then(MCPApp.dataOf); }
+
+  function togglePanel(anchorRow, build) {
+    // one collapsible panel row under a table row; build(container) fills it once
+    var next = anchorRow.nextSibling;
+    if (next && next.dataset && next.dataset.panel === "1") { next.remove(); sized(); return; }
+    var tr = h("tr");
+    tr.dataset.panel = "1";
+    var cell = h("td");
+    cell.colSpan = anchorRow.children.length;
+    var box = h("div", "subwrap", h("span", "muted", "Loading…"));
+    cell.appendChild(box);
+    tr.appendChild(cell);
+    anchorRow.parentNode.insertBefore(tr, anchorRow.nextSibling);
+    sized();
+    Promise.resolve()
+      .then(function () { return build(box); })
+      .catch(function (e) { box.replaceChildren(h("span", "badge draft", (e && e.message) || String(e))); })
+      .then(sized);
+  }
+
+  function preview(container, text, limit) {
+    var s = String(text == null ? "" : text);
+    var over = limit && s.length > limit;
+    if (over) s = s.slice(0, limit);
+    container.replaceChildren(h("pre", "preview", s || "[empty]"));
+    if (over) container.appendChild(h("div", "muted", "…truncated for preview"));
+  }
+
+  /* ------------------------------------------------------- tab renderers */
+
+  function renderModules(root, mods) {
+    if (!mods.length) return root.appendChild(h("div", "note", "No modules in this course."));
+    mods.forEach(function (m) {
+      var hd = h("div", "hd", h("span", "nm", m.name || "(unnamed)"), badge(m.published));
+      hd.appendChild(h("span", "muted", (m.items_count != null ? m.items_count : (m.items || []).length) + " items"));
+      if (!m.published) {
+        hd.appendChild(btn("Publish", function () {
+          if (!confirm('Publish module "' + m.name + '" to students?')) return;
+          return call("update_module", { course_id: state.courseId, module_id: m.id, published: true })
+            .then(function () { toast("Module published."); invalidate(); load(); });
+        }));
+      }
+      var card = h("div", "card", hd);
+      (m.items || []).forEach(function (it) {
+        var title = h("span", "linkish", it.title || "(untitled)");
+        var row = h("div", "item", h("span", "chip", it.type || "?"), title,
+          h("span", "badge " + (it.published ? "pub" : "draft"), it.published ? "●" : "○"));
+        var slot = h("div");
+        title.addEventListener("click", function () {
+          if (slot.firstChild) { slot.replaceChildren(); sized(); return; }
+          slot.appendChild(h("span", "muted", "Loading…"));
+          sized();
+          call("read_module_item", { course_id: state.courseId, module_id: m.id, item_id: it.id })
+            .then(function (text) { preview(slot, text, 6000); sized(); })
+            .catch(function (e) { slot.replaceChildren(h("span", "badge draft", e.message)); sized(); });
+        });
+        card.append(row, slot);
+      });
+      root.appendChild(card);
+    });
+  }
+
+  function submissionRows(a, box, subs) {
+    if (!subs.length) return box.replaceChildren(h("span", "muted", "No submissions yet."));
+    var rows = subs.map(function (s) {
+      var tr = h("tr");
+      var scoreCell = td("num", s.score != null ? String(s.score) : (s.grade != null ? String(s.grade) : "—"));
+      var g = h("input", "grade"); g.type = "text"; g.placeholder = "grade";
+      var c = h("input", "comment"); c.type = "text"; c.placeholder = "feedback comment (optional)";
+      var act = td("actions",
+        btn("Read", function () {
+          togglePanel(tr, function (p) {
+            return call("get_submission_text", { course_id: state.courseId, assignment_id: a.id, user_id: s.user_id })
+              .then(function (text) { preview(p, text, 8000); });
+          });
+        }),
+        " ", g, " ", c, " ",
+        btn("Post", function () {
+          var grade = g.value.trim();
+          if (!grade) throw new Error("Enter a grade first (points, % or letter).");
+          if (!confirm("Post grade " + grade + " for " + (s.user_name || s.user_id) + "? This writes to the gradebook.")) return;
+          return call("grade_submission", {
+            course_id: state.courseId, assignment_id: a.id, user_id: s.user_id,
+            grade: grade, comment: c.value.trim() || null
+          }).then(function (r) {
+            scoreCell.textContent = r && r.score != null ? String(r.score) : grade;
+            toast("Grade posted for " + (s.user_name || s.user_id) + ".");
+          });
+        }, true)
+      );
+      tr.append(
+        td(null, s.user_name || String(s.user_id)),
+        td("num", fmtDate(s.submitted_at)),
+        td(null, s.late ? h("span", "badge draft", "late") : ""),
+        td(null, s.workflow_state || "—"),
+        scoreCell,
+        act
+      );
+      return tr;
+    });
+    box.replaceChildren(table(["Student", "Submitted", "", "State", "Score", ""], rows));
+  }
+
+  function renderAssignments(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No assignments in this course."));
+    var rows = list.map(function (a) {
+      var tr = h("tr");
+      var act = td("actions",
+        btn("Submissions", function () {
+          togglePanel(tr, function (box) {
+            return call("list_submissions", { course_id: state.courseId, assignment_id: a.id })
+              .then(function (subs) { submissionRows(a, box, subs || []); });
+          });
+        })
+      );
+      if (!a.published) {
+        act.append(" ", btn("Publish", function () {
+          if (!confirm('Publish assignment "' + a.name + '" to students?')) return;
+          return call("update_assignment", { course_id: state.courseId, assignment_id: a.id, published: true })
+            .then(function () { toast("Assignment published."); invalidate(); load(); });
+        }));
+      }
+      tr.append(
+        td(null, a.name || "(unnamed)"),
+        td("num", fmtDate(a.due_at)),
+        td("num", a.points_possible != null ? String(a.points_possible) : "—"),
+        td("num", a.needs_grading_count ? String(a.needs_grading_count) : ""),
+        td(null, badge(a.published)),
+        act
+      );
+      return tr;
+    });
+    root.appendChild(table(["Assignment", "Due", "Points", "To grade", "Status", ""], rows));
+  }
+
+  function renderQuizzes(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No quizzes in this course."));
+    var rows = list.map(function (q) {
+      var tr = h("tr");
+      var act = td("actions");
+      if (!q.published) {
+        act.appendChild(btn("Publish", function () {
+          if (!confirm('Publish quiz "' + q.title + '" to students?')) return;
+          return call("publish_quiz", { course_id: state.courseId, quiz_id: q.id })
+            .then(function () { toast("Quiz published."); invalidate(); load(); });
+        }));
+      }
+      tr.append(
+        td(null, q.title || "(untitled)"),
+        td("num", q.question_count != null ? String(q.question_count) : "—"),
+        td("num", q.points_possible != null ? String(q.points_possible) : "—"),
+        td("num", fmtDate(q.due_at)),
+        td(null, badge(q.published)),
+        act
+      );
+      return tr;
+    });
+    root.appendChild(table(["Quiz", "Questions", "Points", "Due", "Status", ""], rows));
+  }
+
+  function renderPages(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No pages in this course."));
+    var rows = list.map(function (p) {
+      var tr = h("tr");
+      var act = td("actions",
+        btn("View", function () {
+          togglePanel(tr, function (box) {
+            return call("get_page", { course_id: state.courseId, page_url_or_id: p.url })
+              .then(function (text) { preview(box, text, 8000); });
+          });
+        })
+      );
+      if (!p.published) {
+        act.append(" ", btn("Publish", function () {
+          if (!confirm('Publish page "' + p.title + '" to students?')) return;
+          return call("update_page", { course_id: state.courseId, page_url_or_id: p.url, published: true })
+            .then(function () { toast("Page published."); invalidate(); load(); });
+        }));
+      }
+      tr.append(
+        td(null, (p.front_page ? "★ " : "") + (p.title || "(untitled)")),
+        td("num", fmtDate(p.updated_at)),
+        td(null, badge(p.published)),
+        act
+      );
+      return tr;
+    });
+    root.appendChild(table(["Page", "Updated", "Status", ""], rows));
+  }
+
+  function renderAnnouncements(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No announcements in this course."));
+    var rows = list.map(function (an) {
+      var tr = h("tr");
+      var act = td("actions");
+      if (an.html_url) act.appendChild(btn("Open in Canvas", function () { return MCPApp.openLink(an.html_url); }));
+      tr.append(td(null, an.title || "(untitled)"), td("num", fmtDate(an.posted_at)), act);
+      return tr;
+    });
+    root.appendChild(table(["Announcement", "Posted", ""], rows));
+  }
+
+  function renderFiles(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No files in this course."));
+    var rows = list.map(function (f) {
+      var tr = h("tr");
+      tr.append(
+        td(null, f.display_name || "(unnamed)"),
+        td(null, h("span", "muted", f.content_type || "?")),
+        td("num", fmtSize(f.size)),
+        td("num", fmtDate(f.updated_at)),
+        td("actions", btn("Read text", function () {
+          togglePanel(tr, function (box) {
+            return call("get_file_text", { file_id: f.id })
+              .then(function (text) { preview(box, text, 8000); });
+          });
+        }))
+      );
+      return tr;
+    });
+    root.appendChild(table(["File", "Type", "Size", "Updated", ""], rows));
+  }
+
+  function renderStudents(root, list) {
+    if (!list.length) return root.appendChild(h("div", "note", "No students enrolled."));
+    var search = h("input"); search.type = "search"; search.placeholder = "Filter by name…";
+    var holder = h("div");
+    function draw() {
+      var q = search.value.trim().toLowerCase();
+      var rows = list
+        .filter(function (s) { return !q || (s.name || "").toLowerCase().includes(q); })
+        .map(function (s) {
+          var tr = h("tr");
+          tr.append(td(null, s.name || String(s.id)), td(null, h("span", "dim", s.email || "—")), td("num", String(s.id)));
+          return tr;
+        });
+      holder.replaceChildren(table(["Student", "Email", "Canvas id"], rows));
+      sized();
+    }
+    search.addEventListener("input", draw);
+    root.append(h("div", null, search), h("div", null, " "), holder);
+    draw();
+  }
+
+  /* ------------------------------------------------------------ loading */
+
+  var LOADERS = {
+    modules: { tool: "list_modules", render: renderModules },
+    assignments: { tool: "list_assignments", render: renderAssignments },
+    quizzes: { tool: "list_quizzes", render: renderQuizzes },
+    pages: { tool: "list_pages", render: renderPages },
+    announcements: { tool: "list_announcements", render: renderAnnouncements },
+    files: { tool: "list_files", render: renderFiles },
+    students: { tool: "list_students", render: renderStudents }
+  };
+
+  function invalidate() {
+    var c = state.cache[state.courseId];
+    if (c) delete c[state.tab];
+  }
+
+  function load() {
+    var root = $("content");
+    if (!state.courseId) { root.replaceChildren(h("div", "note", "No active courses found for this Canvas token.")); return sized(); }
+    var spec = LOADERS[state.tab];
+    var cached = (state.cache[state.courseId] || {})[state.tab];
+    root.replaceChildren(h("div", "note", "Loading " + state.tab + "…"));
+    sized();
+    var gen = load._gen = (load._gen || 0) + 1;
+    Promise.resolve(cached || call(spec.tool, { course_id: state.courseId }))
+      .then(function (data) {
+        if (gen !== load._gen) return; // a newer load superseded this one
+        data = data || [];
+        (state.cache[state.courseId] = state.cache[state.courseId] || {})[state.tab] = data;
+        root.replaceChildren();
+        spec.render(root, data);
+        sized();
+      })
+      .catch(function (e) {
+        if (gen !== load._gen) return;
+        root.replaceChildren(h("div", "note", "Could not load " + state.tab + ": " + ((e && e.message) || e)));
+        sized();
+      });
+  }
+
+  function drawTabs() {
+    var nav = $("tabs");
+    nav.replaceChildren();
+    TABS.forEach(function (t) {
+      var b = h("button", t.id === state.tab ? "on" : null, t.label);
+      b.addEventListener("click", function () { state.tab = t.id; drawTabs(); load(); });
+      nav.appendChild(b);
+    });
+  }
+
+  function init(courses, selectedId) {
+    if (state.booted) return;
+    state.booted = true;
+    state.courses = courses || [];
+    var sel = $("courseSel");
+    sel.replaceChildren();
+    state.courses.forEach(function (c) {
+      var o = h("option", null, (c.name || "course " + c.id) + (c.term ? " · " + c.term : ""));
+      o.value = String(c.id);
+      sel.appendChild(o);
+    });
+    var ok = state.courses.some(function (c) { return c.id === selectedId; });
+    state.courseId = ok ? selectedId : (state.courses[0] ? state.courses[0].id : null);
+    if (state.courseId != null) sel.value = String(state.courseId);
+    drawTabs();
+    load();
+  }
+
+  $("courseSel").addEventListener("change", function (ev) {
+    state.courseId = parseInt(ev.target.value, 10);
+    load();
+  });
+  $("reload").addEventListener("click", function () { invalidate(); load(); });
+
+  var wantedCourse = null;
+  MCPApp.connect({ name: "course-explorer", version: "1.0.0" }, {
+    onToolInput: function (p) {
+      var a = p.arguments || {};
+      if (a.course_id != null) wantedCourse = Number(a.course_id);
+    },
+    onToolResult: function (p) {
+      var d = p.structuredContent || MCPApp.dataOf({ content: p.content });
+      if (d && Array.isArray(d.courses)) {
+        init(d.courses, d.selected_course_id != null ? Number(d.selected_course_id) : wantedCourse);
+      }
+    }
+  }).then(function () {
+    // If the host never delivers the opening tool result (e.g. view restored
+    // later), bootstrap by fetching the course list ourselves.
+    setTimeout(function () {
+      if (state.booted) return;
+      call("list_courses", {})
+        .then(function (courses) { init(courses || [], wantedCourse); })
+        .catch(function (e) {
+          if (!state.booted) $("content").replaceChildren(h("div", "note", "Could not load courses: " + e.message));
+        });
+    }, 1500);
+  });
+})();
+</script>
+</body>
+</html>
