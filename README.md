@@ -12,8 +12,8 @@ install directly (see [Installation](#installation)).
 
 | Component | What it does |
 |---|---|
-| **`canvas` MCP server** (31 tools) | The Canvas REST API as MCP tools: courses, assignments + grading, submission text extraction (PDF/DOCX), quizzes, modules, pages, file upload, announcements, discussions, roster. Plus read-only `canvas://` resources and 4 reusable prompts. |
-| **`canvas-viz` MCP server** (3 tools) | Inline PNG charts: grade histograms, graded-vs-pending donut, per-assignment averages bar chart. |
+| **`canvas` MCP server** (33 tools) | The Canvas REST API as MCP tools: courses, assignments + grading, submission text extraction (PDF/DOCX), quizzes, modules, pages, file upload, announcements, discussions, roster. Plus read-only `canvas://` resources, 4 reusable prompts, and two [MCP Apps](#mcp-apps-interactive-panels-in-claude-desktop): a Course Explorer and a Content Composer. |
+| **`canvas-viz` MCP server** (3 tools) | Inline PNG charts: grade histograms, graded-vs-pending donut, per-assignment averages bar chart. In Claude Desktop each chart also renders as an interactive panel (tooltips, sorting, data table). |
 | **8 slash commands** | `/canvas-setup`, `/canvas-courses`, `/canvas-assignment`, `/canvas-quiz`, `/canvas-module`, `/canvas-grade`, `/canvas-publish`, `/canvas-status` |
 | **2 agents** | `content-reviewer` (checks drafts before publishing, read-only) and `homework-grader` (drafts grades + feedback, never posts them) |
 | **2 skills** | `canvas-management` (draft → review → publish workflow) and `canvas-grading` (rubric → proposal → approval → post) |
@@ -34,7 +34,9 @@ hooks/
   pre_publish_guard.py   # the publish/delete guard
 servers/
   canvas/                # Canvas LMS MCP server (Python, stdio)
+    apps/                # MCP Apps: course-explorer, content-composer + bridge
   visualization/         # chart-rendering MCP server (Python, stdio)
+    apps/                # MCP Apps: interactive views of the three charts
 ```
 
 ## Prerequisites
@@ -106,9 +108,11 @@ to verify dependencies, create the `.env`, and test the Canvas connection.
 
 Plugins (commands, agents, skills, hooks) are Claude Code features. Claude Desktop
 and Cowork can still use both MCP servers — that covers all Canvas tools, the
-chart tools, and the server's built-in prompts (`grade_homework`, `build_quiz`,
+chart tools, the server's built-in prompts (`grade_homework`, `build_quiz`,
 `build_course_module`, `assess_single_submission`), which show up in Desktop's
-prompt picker.
+prompt picker, **and the interactive MCP Apps panels** (Course Explorer, Content
+Composer, and the chart views), which only render in hosts that support MCP Apps —
+Claude Desktop being the main one.
 
 1. Clone this repo somewhere permanent and install the Python deps (above).
 2. Open the config file — Claude Desktop → **Settings → Developer → Edit Config**,
@@ -181,6 +185,23 @@ Or just talk to Claude — the skills route these automatically:
 - *"Grade the ungraded submissions for assignment 456 with this rubric: …"*
 - *"Show me the grade distribution for the midterm."*
 - *"What needs my attention in course 123?"*
+
+### MCP Apps (interactive panels in Claude Desktop)
+
+Both servers ship [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) —
+HTML views that hosts supporting the apps extension (Claude Desktop) render inline
+in the chat. Hosts without support (Claude Code today) ignore them and fall back
+to the tools' normal output, so nothing breaks.
+
+| App | Opened by | What you can do in it |
+|---|---|---|
+| **Course Explorer** | `open_course_explorer` — *"open the course explorer"* | Browse a course's modules, assignments, quizzes, pages, announcements, files, and students in tabs. Drill into an assignment's submissions, read a submission, and **post a grade + feedback inline**. Preview page/file/module-item content. Publish drafts. Every write asks for confirmation first. |
+| **Content Composer** | `open_content_composer` — *"open the content composer"* | Forms for creating content: assignments (points, dates, submission types, module placement), quizzes with a **question-by-question builder** (multiple choice, true/false, short answer, essay, …) and running points total, pages, announcements (with a big "posts immediately" warning + optional scheduling), discussions, and modules. Everything except announcements starts as an unpublished draft. |
+| **Chart views** | the three `render_*` chart tools | The PNG chart, upgraded: hover tooltips, re-binning / sorting, and an accessible data table — in light and dark theme. |
+
+The apps talk back to the same MCP tools you'd use in chat, so the plugin's
+publish guard and draft-first behavior still apply in Claude Code; in Desktop the
+apps ask for confirmation themselves before grading, publishing, or announcing.
 
 ### The review pipeline
 

@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Content Composer</title>
+<style>
+  :root {
+    --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --hairline:rgba(11,11,11,.10);
+    --accent:#2a78d6; --good:#006300; --warn:#8a6100; --crit:#d03b3b;
+    --wash:rgba(11,11,11,.045);
+  }
+  :root[data-theme="dark"] {
+    --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --hairline:rgba(255,255,255,.10);
+    --accent:#3987e5; --good:#0ca30c; --warn:#fab219; --crit:#e66767;
+    --wash:rgba(255,255,255,.06);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; }
+  body {
+    background:var(--surface); color:var(--ink); padding:14px 16px 16px;
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+  }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .ttl { font-size:15px; font-weight:600; margin-right:auto; }
+  select, input[type="text"], input[type="number"], input[type="datetime-local"] {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:4px 7px; font:inherit; font-size:12px;
+  }
+  select { max-width:280px; }
+  textarea {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:6px 8px; width:100%; min-height:96px; resize:vertical;
+    font:12px/1.5 ui-monospace,Consolas,monospace;
+  }
+  textarea.short { min-height:64px; }
+  .btn {
+    background:var(--surface); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:6px; padding:3px 9px; font:inherit; font-size:12px; cursor:pointer;
+  }
+  .btn:hover:not(:disabled) { background:var(--wash); }
+  .btn:disabled { opacity:.55; cursor:default; }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  nav { display:flex; gap:2px; margin:12px 0 0; border-bottom:1px solid var(--grid); flex-wrap:wrap; }
+  nav button {
+    background:none; border:none; border-bottom:2px solid transparent; cursor:pointer;
+    color:var(--ink-2); font:inherit; font-size:12.5px; padding:6px 10px;
+  }
+  nav button:hover { color:var(--ink); }
+  nav button.on { color:var(--ink); border-bottom-color:var(--accent); font-weight:600; }
+  main { margin-top:12px; }
+  .frm {
+    display:grid; grid-template-columns:138px minmax(0,1fr); gap:10px 12px;
+    align-items:start; max-width:660px;
+  }
+  .frm .fl { color:var(--ink-2); font-size:12px; text-align:right; padding-top:5px; }
+  .frm .fw { min-width:0; }
+  .frm .full { grid-column:1 / -1; }
+  .hint { font-size:11px; color:var(--muted); margin-top:2px; }
+  .chkrow { display:flex; gap:4px 16px; flex-wrap:wrap; padding-top:4px; }
+  .chk { display:inline-flex; gap:5px; align-items:center; font-size:12px; color:var(--ink-2); white-space:nowrap; }
+  .inline { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .warnbox {
+    border:1px solid var(--warn); border-radius:8px; background:var(--wash);
+    padding:8px 11px; font-size:12.5px; margin:0 0 12px; max-width:660px;
+  }
+  .warnbox .wt { color:var(--warn); font-weight:600; }
+  .okcard {
+    border:1px solid var(--grid); border-left:3px solid var(--good); border-radius:8px;
+    padding:9px 12px; margin:0 0 14px; max-width:660px;
+  }
+  .okcard .okhd { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .okcard .okt { font-weight:600; margin-right:auto; }
+  .okcard .ok { color:var(--good); font-weight:600; }
+  .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:5px; font-size:12px; color:var(--ink-2); }
+  .kv b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+  .card { border:1px solid var(--grid); border-radius:8px; padding:9px 12px; margin-bottom:12px; max-width:660px; }
+  .card .hd { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .card .hd .nm { font-weight:600; margin-right:auto; }
+  .badge { font-size:11px; white-space:nowrap; }
+  .badge.pub { color:var(--good); }
+  .badge.draft { color:var(--warn); }
+  .chip {
+    font-size:10.5px; color:var(--ink-2); border:1px solid var(--hairline);
+    border-radius:10px; padding:0 7px; white-space:nowrap;
+  }
+  .muted { color:var(--muted); }
+  .arow { display:flex; gap:6px; align-items:center; margin-bottom:5px; }
+  .arow input[type="text"] { flex:1; min-width:0; }
+  .qitem { display:flex; gap:8px; align-items:baseline; padding:4px 0 4px 8px; border-top:1px solid var(--grid); font-size:12.5px; }
+  .qitem .qn { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .qitem .qt { margin-right:auto; }
+  .note { color:var(--muted); padding:18px 0; font-size:12px; }
+  .actions { display:flex; gap:8px; margin-top:4px; flex-wrap:wrap; }
+  #toast {
+    position:fixed; left:16px; bottom:12px; right:16px; z-index:5; display:none;
+    background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--good);
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:7px 11px; font-size:12.5px;
+  }
+  #toast.err { border-left-color:var(--crit); }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <div class="ttl">Content Composer</div>
+    <select id="courseSel" title="Course"></select>
+  </header>
+  <nav id="tabs"></nav>
+  <main id="content"><div class="note">Loading courses&hellip;</div></main>
+  <div id="toast"></div>
+
+<script>/*__MCP_BRIDGE__*/</script>
+<script>
+"use strict";
+(function () {
+  var state = {
+    courses: [], courseId: null, tab: "assignment", booted: false,
+    modules: {},          // courseId -> [{id, name}] cache for the module selects
+    moduleSels: [],       // live module <select>s to repopulate on course change
+    quiz: null            // in-progress quiz: {id, title, courseId, courseName, questions, points}
+  };
+
+  var TABS = [
+    { id: "assignment", label: "Assignment" },
+    { id: "quiz", label: "Quiz" },
+    { id: "page", label: "Page" },
+    { id: "announcement", label: "Announcement" },
+    { id: "discussion", label: "Discussion" },
+    { id: "module", label: "Module" }
+  ];
+
+  function $(id) { return document.getElementById(id); }
+
+  function h(tag, cls) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    for (var i = 2; i < arguments.length; i++) {
+      var k = arguments[i];
+      if (k !== null && k !== undefined) e.append(k);
+    }
+    return e;
+  }
+
+  function toast(msg, isErr) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.className = isErr ? "err" : "";
+    t.style.display = "block";
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.style.display = "none"; }, isErr ? 7000 : 3500);
+  }
+
+  function sized() { if (window.MCPApp) MCPApp.reportSize(); }
+
+  function call(tool, args) { return MCPApp.callTool(tool, args).then(MCPApp.dataOf); }
+
+  function btn(label, fn, primary) {
+    var b = h("button", "btn" + (primary ? " primary" : ""), label);
+    b.addEventListener("click", function () {
+      b.disabled = true;
+      var old = b.textContent;
+      b.textContent = "…";
+      Promise.resolve()
+        .then(function () { return fn(b); })
+        .catch(function (e) { toast((e && e.message) || String(e), true); })
+        .then(function () { b.disabled = false; b.textContent = old; sized(); });
+    });
+    return b;
+  }
+
+  /* ---- input builders ------------------------------------------------ */
+
+  function txt(placeholder, width) {
+    var i = h("input");
+    i.type = "text";
+    if (placeholder) i.placeholder = placeholder;
+    i.style.width = width || "100%";
+    return i;
+  }
+
+  function num(value, width, min) {
+    var i = h("input");
+    i.type = "number";
+    if (value !== null && value !== undefined) i.value = String(value);
+    if (min !== undefined) i.min = String(min);
+    i.style.width = width || "90px";
+    return i;
+  }
+
+  function dt() {
+    var i = h("input");
+    i.type = "datetime-local";
+    return i;
+  }
+
+  function area(short) {
+    var t = h("textarea", short ? "short" : null);
+    t.spellcheck = true;
+    return t;
+  }
+
+  function chk(label, checked) {
+    var c = h("input");
+    c.type = "checkbox";
+    c.checked = !!checked;
+    var l = h("label", "chk", c, label);
+    l.input = c;
+    return l;
+  }
+
+  function opt(value, label, sel) {
+    var o = h("option", null, label);
+    o.value = value;
+    if (sel) o.selected = true;
+    return o;
+  }
+
+  /* form grid: field(form, "Label", control[, hintText]) */
+  function field(frm, label, control, hint) {
+    frm.appendChild(h("div", "fl", label));
+    var w = h("div", "fw", control);
+    if (hint) w.appendChild(h("div", "hint", hint));
+    frm.appendChild(w);
+    return control;
+  }
+
+  function req(v, name) {
+    if (!v || !String(v).trim()) throw new Error(name + " is required.");
+    return String(v).trim();
+  }
+
+  /* datetime-local -> ISO 8601 with the local UTC offset ("2026-07-15T23:59:00-05:00") */
+  function isoFromLocal(v) {
+    if (!v) return null;
+    var d = new Date(v);
+    if (isNaN(d)) return null;
+    var off = -d.getTimezoneOffset();
+    var sign = off >= 0 ? "+" : "-";
+    var a = Math.abs(off);
+    function p2(n) { return (n < 10 ? "0" : "") + n; }
+    return v + (v.length === 16 ? ":00" : "") + sign + p2(Math.floor(a / 60)) + ":" + p2(a % 60);
+  }
+
+  function courseName(id) {
+    for (var i = 0; i < state.courses.length; i++)
+      if (state.courses[i].id === id) return state.courses[i].name || ("course " + id);
+    return "course " + id;
+  }
+
+  /* ---- module select (shared by assignment / quiz / page forms) ------- */
+
+  function moduleSelect() {
+    var wrap = h("div", "inline");
+    var sel = h("select");
+    sel.appendChild(opt("", "— none —", true));
+    wrap.appendChild(sel);
+    wrap.appendChild(btn("↻", function () { return loadModules(true); }));
+    wrap.sel = sel;
+    state.moduleSels.push(sel);
+    return wrap;
+  }
+
+  function fillModuleSels() {
+    var mods = state.modules[state.courseId] || [];
+    state.moduleSels.forEach(function (sel) {
+      var keep = sel.value;
+      sel.replaceChildren(opt("", "— none —"));
+      mods.forEach(function (m) { sel.appendChild(opt(String(m.id), m.name || ("module " + m.id))); });
+      sel.value = mods.some(function (m) { return String(m.id) === keep; }) ? keep : "";
+    });
+  }
+
+  function loadModules(force) {
+    var cid = state.courseId;
+    if (cid == null) return Promise.resolve();
+    if (!force && state.modules[cid]) { fillModuleSels(); return Promise.resolve(); }
+    return call("list_modules", { course_id: cid }).then(function (mods) {
+      state.modules[cid] = (mods || []).map(function (m) { return { id: m.id, name: m.name }; });
+      if (state.courseId === cid) fillModuleSels();
+    }).catch(function (e) { toast("Could not load modules: " + e.message, true); });
+  }
+
+  function moduleIdOf(msel) {
+    var v = msel.sel.value;
+    return v ? parseInt(v, 10) : null;
+  }
+
+  /* ---- success card ---------------------------------------------------- */
+
+  function showResult(pane, kind, name, facts, htmlUrl) {
+    var old = pane.querySelector(".okcard");
+    if (old) old.remove();
+    var hd = h("div", "okhd", h("span", "ok", "✓"), h("span", "okt", kind + " created — " + name));
+    if (htmlUrl) hd.appendChild(btn("Open in Canvas", function () { return MCPApp.openLink(htmlUrl); }));
+    var card = h("div", "okcard", hd);
+    var kv = h("div", "kv");
+    (facts || []).forEach(function (f) {
+      if (f[1] === null || f[1] === undefined || f[1] === "") return;
+      kv.appendChild(h("span", null, f[0] + " ", h("b", null, String(f[1]))));
+    });
+    if (kv.childNodes.length) card.appendChild(kv);
+    pane.insertBefore(card, pane.firstChild);
+    sized();
+  }
+
+  /* ---- assignment ------------------------------------------------------ */
+
+  function buildAssignmentPane() {
+    var pane = h("div");
+    var frm = h("div", "frm");
+    var name = field(frm, "Name *", txt("e.g. Homework 3 — Recursion"));
+    var points = field(frm, "Points", num(100, "90px", 0));
+    var due = field(frm, "Due", dt(), "Times are entered in your local timezone.");
+    var unlock = field(frm, "Available from", dt());
+    var lock = field(frm, "Until", dt());
+    var desc = field(frm, "Instructions", area(), "HTML allowed — headings, lists, links.");
+    var stWrap = h("div", "chkrow");
+    var stText = chk("Text entry", true), stUpload = chk("File upload", true),
+        stUrl = chk("Website URL", false), stMedia = chk("Media recording", false);
+    stWrap.append(stText, stUpload, stUrl, stMedia);
+    field(frm, "Submission types", stWrap);
+    var ext = field(frm, "Allowed extensions", txt("pdf, docx (leave empty for any)"),
+      "Comma-separated; only applies to file uploads.");
+    var msel = field(frm, "Add to module", moduleSelect());
+    var pub = chk("Publish immediately", false);
+    field(frm, "", pub, "Leave unchecked to create as a draft you can review first.");
+
+    var act = h("div", "actions", btn("Create assignment", function () {
+      var args = {
+        course_id: state.courseId,
+        name: req(name.value, "Name"),
+        description_html: desc.value || "",
+        points_possible: parseFloat(points.value) >= 0 ? parseFloat(points.value) : 100,
+        published: pub.input.checked
+      };
+      var types = [];
+      if (stText.input.checked) types.push("online_text_entry");
+      if (stUpload.input.checked) types.push("online_upload");
+      if (stUrl.input.checked) types.push("online_url");
+      if (stMedia.input.checked) types.push("media_recording");
+      if (types.length) args.submission_types = types;
+      var d = isoFromLocal(due.value); if (d) args.due_at = d;
+      var u = isoFromLocal(unlock.value); if (u) args.unlock_at = u;
+      var l = isoFromLocal(lock.value); if (l) args.lock_at = l;
+      var exts = ext.value.split(",").map(function (s) { return s.trim().replace(/^\./, ""); })
+        .filter(function (s) { return s; });
+      if (exts.length && stUpload.input.checked) args.allowed_extensions = exts;
+      var mid = moduleIdOf(msel); if (mid != null) args.module_id = mid;
+      if (args.published && !confirm('Publish "' + args.name + '" immediately? Students will see it right away.'))
+        return;
+      return call("create_assignment", args).then(function (a) {
+        showResult(pane, "Assignment", a.name || args.name, [
+          ["id", a.id], ["points", a.points_possible],
+          ["due", a.due_at ? new Date(a.due_at).toLocaleString() : null],
+          ["state", a.published ? "published" : "draft"],
+          ["module", mid != null ? "added" : null]
+        ], a.html_url);
+        name.value = ""; desc.value = "";
+        toast("Assignment created" + (a.published ? " and published." : " as a draft."));
+      });
+    }, true));
+
+    frm.appendChild(h("div", "full", act));
+    pane.appendChild(frm);
+    return pane;
+  }
+
+  /* ---- quiz (create draft, then question builder) ----------------------- */
+
+  var QUESTION_TYPES = [
+    ["multiple_choice_question", "Multiple choice"],
+    ["true_false_question", "True / False"],
+    ["multiple_answers_question", "Multiple answers"],
+    ["short_answer_question", "Short answer (fill-in)"],
+    ["essay_question", "Essay (graded manually)"],
+    ["numerical_question", "Numerical (set answers in Canvas)"],
+    ["text_only_question", "Text block (no answer)"]
+  ];
+
+  function buildQuizPane() {
+    var pane = h("div");
+    drawQuizStage(pane);
+    return pane;
+  }
+
+  function drawQuizStage(pane) {
+    var old = pane.querySelector(".stage");
+    if (old) old.remove();
+    var stage = h("div", "stage");
+    stage.appendChild(state.quiz ? quizBuilder(pane) : quizCreateForm(pane));
+    pane.appendChild(stage);
+    sized();
+  }
+
+  function quizCreateForm(pane) {
+    var frm = h("div", "frm");
+    var title = field(frm, "Title *", txt("e.g. Week 5 Checkpoint Quiz"));
+    var desc = field(frm, "Description", area(true), "HTML allowed. Shown before students start.");
+    var qtype = h("select");
+    qtype.append(opt("assignment", "Graded quiz", true), opt("practice_quiz", "Practice quiz"),
+      opt("graded_survey", "Graded survey"), opt("survey", "Ungraded survey"));
+    field(frm, "Type", qtype);
+    var due = field(frm, "Due", dt(), "Local timezone.");
+    var tlimit = field(frm, "Time limit", num("", "90px", 1), "Minutes; empty = no limit.");
+    var attempts = field(frm, "Allowed attempts", num(1, "90px"), "-1 = unlimited.");
+    var shuffle = chk("Shuffle answer order", true);
+    field(frm, "", shuffle);
+    var msel = field(frm, "Add to module", moduleSelect());
+
+    var act = h("div", "actions", btn("Create quiz draft", function () {
+      var args = {
+        course_id: state.courseId,
+        title: req(title.value, "Title"),
+        description_html: desc.value || "",
+        quiz_type: qtype.value,
+        shuffle_answers: shuffle.input.checked
+      };
+      var at = parseInt(attempts.value, 10);
+      if (!isNaN(at) && at !== 1) args.allowed_attempts = at;
+      var tl = parseInt(tlimit.value, 10);
+      if (!isNaN(tl) && tl > 0) args.time_limit_minutes = tl;
+      var d = isoFromLocal(due.value); if (d) args.due_at = d;
+      var mid = moduleIdOf(msel); if (mid != null) args.module_id = mid;
+      return call("create_quiz", args).then(function (q) {
+        state.quiz = {
+          id: q.id, title: q.title || args.title, courseId: state.courseId,
+          courseName: courseName(state.courseId), htmlUrl: q.html_url,
+          questions: [], points: 0
+        };
+        toast("Quiz draft created — now add questions.");
+        drawQuizStage(pane);
+      });
+    }, true));
+
+    frm.appendChild(h("div", "full", act));
+    var wrap = h("div");
+    wrap.appendChild(h("div", "hint", "Quizzes are created unpublished. Add questions next, then publish when ready."));
+    wrap.appendChild(h("div", null, " "));
+    wrap.appendChild(frm);
+    return wrap;
+  }
+
+  function quizBuilder(pane) {
+    var qz = state.quiz;
+    var wrap = h("div");
+
+    var head = h("div", "card");
+    var hd = h("div", "hd",
+      h("span", "nm", qz.title),
+      h("span", "chip", qz.courseName),
+      h("span", "badge draft", "○ draft"));
+    head.appendChild(hd);
+    var tally = h("div", "kv");
+    head.appendChild(tally);
+    var qlist = h("div");
+    head.appendChild(qlist);
+
+    function redrawList() {
+      tally.replaceChildren(
+        h("span", null, "questions ", h("b", null, String(qz.questions.length))),
+        h("span", null, "points ", h("b", null, String(qz.points))));
+      qlist.replaceChildren();
+      qz.questions.forEach(function (q, i) {
+        qlist.appendChild(h("div", "qitem",
+          h("span", "qn", String(i + 1) + "."),
+          h("span", "qt", q.name),
+          h("span", "chip", q.typeLabel),
+          h("span", "muted", q.points + " pt" + (q.points === 1 ? "" : "s"))));
+      });
+      sized();
+    }
+    redrawList();
+
+    /* --- question form --- */
+    var frm = h("div", "frm");
+    var qtext = field(frm, "Question *", area(true));
+    var qtype = h("select");
+    QUESTION_TYPES.forEach(function (t) { qtype.appendChild(opt(t[0], t[1])); });
+    field(frm, "Type", qtype);
+    var qpts = field(frm, "Points", num(1, "90px", 0));
+
+    var ansCell = h("div");
+    field(frm, "Answers", ansCell);
+    var tfSel = null, ansRows = null, addAnsBtn = null;
+
+    function answerRow(withCorrect, text) {
+      var row = h("div", "arow");
+      var c = null;
+      if (withCorrect) {
+        c = h("input");
+        c.type = "checkbox";
+        c.title = "Correct answer";
+        row.appendChild(h("label", "chk", c, "✓"));
+      }
+      var t = txt("Answer text");
+      if (text) t.value = text;
+      row.appendChild(t);
+      var x = h("button", "btn", "✕");
+      x.title = "Remove answer";
+      x.addEventListener("click", function () { row.remove(); sized(); });
+      row.append(x);
+      row.correct = c;
+      row.text = t;
+      return row;
+    }
+
+    function renderAnswers() {
+      var t = qtype.value;
+      tfSel = null; ansRows = null;
+      ansCell.replaceChildren();
+      if (t === "true_false_question") {
+        tfSel = h("select");
+        tfSel.append(opt("true", "Correct answer: True", true), opt("false", "Correct answer: False"));
+        ansCell.appendChild(tfSel);
+      } else if (t === "multiple_choice_question" || t === "multiple_answers_question" ||
+                 t === "short_answer_question") {
+        var withCorrect = t !== "short_answer_question";
+        ansRows = h("div");
+        var start = withCorrect ? 3 : 1;
+        for (var i = 0; i < start; i++) ansRows.appendChild(answerRow(withCorrect));
+        ansCell.appendChild(ansRows);
+        addAnsBtn = h("button", "btn", "+ Add answer");
+        addAnsBtn.addEventListener("click", function () {
+          ansRows.appendChild(answerRow(withCorrect));
+          sized();
+        });
+        ansCell.appendChild(addAnsBtn);
+        ansCell.appendChild(h("div", "hint",
+          t === "multiple_choice_question" ? "Check exactly one correct answer." :
+          t === "multiple_answers_question" ? "Check every correct answer." :
+          "Every row is an accepted answer (exact match)."));
+      } else {
+        ansCell.appendChild(h("div", "hint",
+          t === "essay_question" ? "Essays are graded manually — no answer key here." :
+          t === "numerical_question" ? "Add the accepted numeric ranges in Canvas after creating." :
+          "Text blocks display instructions between questions and take no answer."));
+      }
+      sized();
+    }
+    qtype.addEventListener("change", renderAnswers);
+    renderAnswers();
+
+    function collectAnswers() {
+      var t = qtype.value;
+      if (t === "true_false_question") {
+        var v = tfSel.value === "true";
+        return [{ text: "True", correct: v }, { text: "False", correct: !v }];
+      }
+      if (!ansRows) return null;
+      var out = [];
+      Array.prototype.forEach.call(ansRows.children, function (row) {
+        var txtv = row.text.value.trim();
+        if (!txtv) return;
+        out.push({ text: txtv, correct: row.correct ? row.correct.checked : true });
+      });
+      if (out.length < (t === "short_answer_question" ? 1 : 2))
+        throw new Error(t === "short_answer_question"
+          ? "Add at least one accepted answer." : "Add at least two answers.");
+      var nCorrect = out.filter(function (a) { return a.correct; }).length;
+      if (t === "multiple_choice_question" && nCorrect !== 1)
+        throw new Error("Multiple choice needs exactly one correct answer checked.");
+      if (t === "multiple_answers_question" && nCorrect < 1)
+        throw new Error("Check at least one correct answer.");
+      return out;
+    }
+
+    var act = h("div", "actions", btn("Add question", function () {
+      var text = req(qtext.value, "Question text");
+      var answers = collectAnswers();
+      var pts = parseFloat(qpts.value);
+      if (isNaN(pts) || pts < 0) pts = 1;
+      if (qtype.value === "text_only_question") pts = 0;
+      var args = {
+        course_id: qz.courseId, quiz_id: qz.id,
+        question_text: text, question_type: qtype.value, points_possible: pts
+      };
+      if (answers) args.answers = answers;
+      var typeLabel = QUESTION_TYPES.filter(function (t) { return t[0] === qtype.value; })[0][1];
+      return call("add_quiz_question", args).then(function (q) {
+        qz.questions.push({
+          name: q.question_name || text.slice(0, 50),
+          typeLabel: typeLabel,
+          points: q.points_possible != null ? q.points_possible : pts
+        });
+        qz.points = qz.questions.reduce(function (s, x) { return s + (Number(x.points) || 0); }, 0);
+        qtext.value = "";
+        renderAnswers();
+        redrawList();
+        toast("Question " + qz.questions.length + " added.");
+      });
+    }, true));
+    frm.appendChild(h("div", "full", act));
+
+    var done = h("div", "actions",
+      btn("Publish quiz", function () {
+        if (!qz.questions.length && !confirm("This quiz has no questions yet. Publish anyway?")) return;
+        if (!confirm('Publish "' + qz.title + '" (' + qz.questions.length +
+            " questions, " + qz.points + " points)? Students will be able to take it.")) return;
+        return call("publish_quiz", { course_id: qz.courseId, quiz_id: qz.id }).then(function (q) {
+          showResult(pane, "Quiz", q.title || qz.title, [
+            ["id", q.id], ["questions", q.question_count != null ? q.question_count : qz.questions.length],
+            ["points", q.points_possible != null ? q.points_possible : qz.points],
+            ["state", "published"]
+          ], q.html_url || qz.htmlUrl);
+          state.quiz = null;
+          drawQuizStage(pane);
+          toast("Quiz published.");
+        });
+      }, true),
+      btn("Keep as draft & finish", function () {
+        showResult(pane, "Quiz", qz.title, [
+          ["id", qz.id], ["questions", qz.questions.length], ["points", qz.points], ["state", "draft"]
+        ], qz.htmlUrl);
+        state.quiz = null;
+        drawQuizStage(pane);
+        toast("Quiz saved as a draft.");
+      }),
+      btn("Discard builder", function () {
+        if (!confirm("Stop editing this quiz? The draft stays in Canvas as-is.")) return;
+        state.quiz = null;
+        drawQuizStage(pane);
+      }));
+
+    wrap.append(head, frm, h("div", null, " "), done);
+    return wrap;
+  }
+
+  /* ---- page -------------------------------------------------------------- */
+
+  function buildPagePane() {
+    var pane = h("div");
+    var frm = h("div", "frm");
+    var title = field(frm, "Title *", txt("e.g. Week 5 Overview"));
+    var body = field(frm, "Body *", area(), "HTML allowed — this is the page content.");
+    var msel = field(frm, "Add to module", moduleSelect());
+    var pub = chk("Publish immediately", false);
+    field(frm, "", pub, "Leave unchecked to create as a draft.");
+    var act = h("div", "actions", btn("Create page", function () {
+      var args = {
+        course_id: state.courseId,
+        title: req(title.value, "Title"),
+        body_html: req(body.value, "Body"),
+        published: pub.input.checked
+      };
+      var mid = moduleIdOf(msel); if (mid != null) args.module_id = mid;
+      return call("create_page", args).then(function (d) {
+        var p = d && d.page ? d.page : d;
+        showResult(pane, "Page", p.title || args.title, [
+          ["slug", p.url], ["state", p.published ? "published" : "draft"],
+          ["module", d && d.module_item ? "added" : (mid != null ? "added" : null)]
+        ], null);
+        title.value = ""; body.value = "";
+        toast("Page created" + (p.published ? " and published." : " as a draft."));
+      });
+    }, true));
+    frm.appendChild(h("div", "full", act));
+    pane.appendChild(frm);
+    return pane;
+  }
+
+  /* ---- announcement -------------------------------------------------------- */
+
+  function buildAnnouncementPane() {
+    var pane = h("div");
+    pane.appendChild(h("div", "warnbox",
+      h("span", "wt", "⚠ Posts immediately. "),
+      "Announcements are visible to students as soon as they are created — set a delayed post time below to schedule instead."));
+    var frm = h("div", "frm");
+    var title = field(frm, "Title *", txt());
+    var msg = field(frm, "Message *", area(), "HTML allowed.");
+    var delay = field(frm, "Delay posting until", dt(), "Optional. Local timezone; empty = post now.");
+    var act = h("div", "actions", btn("Post announcement", function () {
+      var args = {
+        course_id: state.courseId,
+        title: req(title.value, "Title"),
+        message_html: req(msg.value, "Message")
+      };
+      var d = isoFromLocal(delay.value);
+      if (d) args.delayed_post_at = d;
+      var ok = d
+        ? confirm('Schedule "' + args.title + '" to post at ' + new Date(d).toLocaleString() + "?")
+        : confirm('Post "' + args.title + '" now? Students will see it immediately.');
+      if (!ok) return;
+      return call("create_announcement", args).then(function (a) {
+        showResult(pane, "Announcement", a.title || args.title, [
+          ["id", a.id],
+          ["posts", a.delayed_post_at ? new Date(a.delayed_post_at).toLocaleString() : "immediately"]
+        ], a.html_url);
+        title.value = ""; msg.value = ""; delay.value = "";
+        toast(d ? "Announcement scheduled." : "Announcement posted.");
+      });
+    }, true));
+    frm.appendChild(h("div", "full", act));
+    pane.appendChild(frm);
+    return pane;
+  }
+
+  /* ---- discussion ------------------------------------------------------------ */
+
+  function buildDiscussionPane() {
+    var pane = h("div");
+    var frm = h("div", "frm");
+    var title = field(frm, "Title *", txt());
+    var msg = field(frm, "First post *", area(), "HTML allowed — the prompt students reply to.");
+    var threaded = chk("Threaded replies", true);
+    field(frm, "", threaded, "Students can reply to each other's replies.");
+    var pub = chk("Publish immediately", false);
+    field(frm, "", pub, "Leave unchecked to create as a draft.");
+    var act = h("div", "actions", btn("Create discussion", function () {
+      var args = {
+        course_id: state.courseId,
+        title: req(title.value, "Title"),
+        message_html: req(msg.value, "First post"),
+        threaded: threaded.input.checked,
+        published: pub.input.checked
+      };
+      if (args.published && !confirm('Publish "' + args.title + '" immediately? Students can reply right away.'))
+        return;
+      return call("create_discussion", args).then(function (dsc) {
+        showResult(pane, "Discussion", dsc.title || args.title, [
+          ["id", dsc.id], ["state", dsc.published ? "published" : "draft"]
+        ], dsc.html_url);
+        title.value = ""; msg.value = "";
+        toast("Discussion created" + (dsc.published ? " and published." : " as a draft."));
+      });
+    }, true));
+    frm.appendChild(h("div", "full", act));
+    pane.appendChild(frm);
+    return pane;
+  }
+
+  /* ---- module ------------------------------------------------------------------ */
+
+  function buildModulePane() {
+    var pane = h("div");
+    var frm = h("div", "frm");
+    var name = field(frm, "Name *", txt("e.g. Week 6 — NumPy"));
+    var pos = field(frm, "Position", num("", "90px", 1), "1-based position in the module list; empty = add at the end.");
+    var unlock = field(frm, "Unlock at", dt(), "Optional. When students gain access; local timezone.");
+    var act = h("div", "actions", btn("Create module", function () {
+      var args = { course_id: state.courseId, name: req(name.value, "Name") };
+      var p = parseInt(pos.value, 10);
+      if (!isNaN(p) && p >= 1) args.position = p;
+      var u = isoFromLocal(unlock.value); if (u) args.unlock_at = u;
+      return call("create_module", args).then(function (m) {
+        delete state.modules[state.courseId]; // new module should appear in the selects
+        loadModules();
+        showResult(pane, "Module", m.name || args.name, [
+          ["id", m.id], ["position", m.position], ["state", "unpublished"]
+        ], null);
+        name.value = ""; pos.value = "";
+        toast("Module created (unpublished). Add items to it from the other tabs.");
+      });
+    }, true));
+    frm.appendChild(h("div", "full", act));
+    pane.appendChild(frm);
+    pane.appendChild(h("div", "hint",
+      "New modules start unpublished. Use the module dropdown on the Assignment, Quiz, and Page tabs to file new content into them."));
+    return pane;
+  }
+
+  /* ---- shell ---------------------------------------------------------------------- */
+
+  var panes = {};
+  var builders = {
+    assignment: buildAssignmentPane, quiz: buildQuizPane, page: buildPagePane,
+    announcement: buildAnnouncementPane, discussion: buildDiscussionPane, module: buildModulePane
+  };
+
+  function showTab() {
+    var content = $("content");
+    if (!panes[state.tab]) {
+      panes[state.tab] = builders[state.tab]();
+      fillModuleSels();
+    }
+    content.replaceChildren(panes[state.tab]);
+    drawTabs();
+    sized();
+  }
+
+  function drawTabs() {
+    var nav = $("tabs");
+    nav.replaceChildren();
+    TABS.forEach(function (t) {
+      var b = h("button", t.id === state.tab ? "on" : null, t.label);
+      b.addEventListener("click", function () { state.tab = t.id; showTab(); });
+      nav.appendChild(b);
+    });
+  }
+
+  function init(courses, selectedId, contentType) {
+    if (state.booted) return;
+    state.booted = true;
+    state.courses = courses || [];
+    var sel = $("courseSel");
+    sel.replaceChildren();
+    state.courses.forEach(function (c) {
+      var o = h("option", null, (c.name || "course " + c.id) + (c.term ? " · " + c.term : ""));
+      o.value = String(c.id);
+      sel.appendChild(o);
+    });
+    var ok = state.courses.some(function (c) { return c.id === selectedId; });
+    state.courseId = ok ? selectedId : (state.courses[0] ? state.courses[0].id : null);
+    if (state.courseId != null) sel.value = String(state.courseId);
+    if (contentType) {
+      var want = String(contentType).toLowerCase().replace(/s$/, "");
+      if (builders[want]) state.tab = want;
+    }
+    if (state.courseId == null) {
+      $("content").replaceChildren(h("div", "note", "No active courses found for this Canvas token."));
+      return;
+    }
+    showTab();
+    loadModules();
+  }
+
+  $("courseSel").addEventListener("change", function (ev) {
+    state.courseId = parseInt(ev.target.value, 10);
+    loadModules();
+  });
+
+  var wantedCourse = null, wantedType = null;
+  MCPApp.connect({ name: "content-composer", version: "1.0.0" }, {
+    onToolInput: function (p) {
+      var a = p.arguments || {};
+      if (a.course_id != null) wantedCourse = Number(a.course_id);
+      if (a.content_type) wantedType = a.content_type;
+    },
+    onToolResult: function (p) {
+      var d = p.structuredContent || MCPApp.dataOf({ content: p.content });
+      if (d && Array.isArray(d.courses)) {
+        init(d.courses,
+          d.selected_course_id != null ? Number(d.selected_course_id) : wantedCourse,
+          d.content_type || wantedType);
+      }
+    }
+  }).then(function () {
+    // If the host never delivers the opening tool result (e.g. view restored
+    // later), bootstrap by fetching the course list ourselves.
+    setTimeout(function () {
+      if (state.booted) return;
+      call("list_courses", {})
+        .then(function (courses) { init(courses || [], wantedCourse, wantedType); })
+        .catch(function (e) {
+          if (!state.booted) $("content").replaceChildren(h("div", "note", "Could not load courses: " + e.message));
+        });
+    }, 1500);
+  });
+})();
+</script>
+</body>
+</html>

@@ -7,15 +7,15 @@
   },
   "metadata": {
     "description": "Marketplace for Canvas LMS tooling for Claude — this repository hosts the canvas-course-manager plugin and serves as its own marketplace.",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "canvas-course-manager",
       "source": "./",
-      "description": "Manage Canvas LMS coursework from Claude: create assignments, quizzes, modules, and pages as reviewed drafts, grade submissions against rubrics, post announcements, and render grade/progress charts inline. Bundles two MCP servers, slash commands, agents, skills, and a publish-guard hook.",
+      "description": "Manage Canvas LMS coursework from Claude: create assignments, quizzes, modules, and pages as reviewed drafts, grade submissions against rubrics, post announcements, and render grade/progress charts inline. Bundles two MCP servers, slash commands, agents, skills, a publish-guard hook, and interactive MCP Apps panels (course explorer, content composer, chart views) for Claude Desktop.",
       "category": "education",
-      "keywords": ["canvas", "lms", "education", "teaching", "grading", "quiz", "mcp"]
+      "keywords": ["canvas", "lms", "education", "teaching", "grading", "quiz", "mcp", "mcp-apps"]
     }
   ]
 }

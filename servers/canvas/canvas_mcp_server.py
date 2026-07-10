@@ -12,6 +12,9 @@ Exposes tools, resources, and prompts for:
   * wiki pages (list / read / create / update)
   * course files (list, upload from local disk, extract text)
   * announcements, discussions, and the student roster
+  * two MCP Apps for hosts that render them (Claude Desktop): an
+    interactive Course Explorer (open_course_explorer) and a Content
+    Composer with creation forms (open_content_composer)
 
 Transport: stdio by default (what Claude Desktop / Claude Code plugin
 configs expect). Set MCP_TRANSPORT=streamable-http to serve over HTTP
@@ -40,6 +43,7 @@ import os
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
 
 import httpx
 from dotenv import load_dotenv
@@ -66,7 +70,11 @@ mcp = FastMCP(
         "the content behind any module item with read_module_item. Grades are "
         "only written when grade_submission is called — fetch submission text "
         "with get_submission_text, assess it against the rubric, then post the "
-        "grade and feedback comment."
+        "grade and feedback comment. In MCP Apps hosts (Claude Desktop), "
+        "open_course_explorer renders an interactive panel for browsing a "
+        "course and grading inline, and open_content_composer renders forms "
+        "for creating assignments, quizzes, pages, announcements, discussions, "
+        "and modules."
     ),
     host=MCP_HOST,
     port=MCP_PORT,
@@ -379,6 +387,85 @@ def _slim_file(f: dict) -> dict:
         "size": f.get("size"),
         "folder_id": f.get("folder_id"),
         "updated_at": f.get("updated_at"),
+    }
+
+
+# --------------------------------------------------------------------------
+# MCP Apps — interactive HTML views (rendered by hosts like Claude Desktop)
+# --------------------------------------------------------------------------
+
+UI_MIME = "text/html;profile=mcp-app"
+_APPS_DIR = Path(__file__).resolve().parent / "apps"
+_app_cache: dict[str, str] = {}
+
+
+def _app_html(name: str) -> str:
+    """Load an app template and inline the shared postMessage bridge."""
+    if name not in _app_cache:
+        bridge = (_APPS_DIR / "bridge.js").read_text(encoding="utf-8")
+        html = (_APPS_DIR / f"{name}.html").read_text(encoding="utf-8")
+        _app_cache[name] = html.replace("/*__MCP_BRIDGE__*/", bridge, 1)
+    return _app_cache[name]
+
+
+def _ui(name: str) -> dict:
+    """Tool _meta linking it to its MCP Apps view (non-app hosts ignore it)."""
+    return {"ui": {"resourceUri": f"ui://canvas-lms/{name}"}}
+
+
+@mcp.resource("ui://canvas-lms/course-explorer", mime_type=UI_MIME, meta={"ui": {"prefersBorder": True}})
+def course_explorer_app() -> str:
+    """Interactive course browser view for open_course_explorer (MCP Apps)."""
+    return _app_html("course-explorer")
+
+
+@mcp.resource("ui://canvas-lms/content-composer", mime_type=UI_MIME, meta={"ui": {"prefersBorder": True}})
+def content_composer_app() -> str:
+    """Content creation forms view for open_content_composer (MCP Apps)."""
+    return _app_html("content-composer")
+
+
+async def _app_courses() -> list[dict]:
+    courses = await _canvas_paginated(
+        "/courses", params={"enrollment_state": "active", "include[]": ["term", "total_students"]}
+    )
+    return [_slim_course(c) for c in courses]
+
+
+@mcp.tool(meta=_ui("course-explorer"), structured_output=True)
+async def open_course_explorer(course_id: int | None = None) -> dict[str, Any]:
+    """Open the interactive Course Explorer panel (MCP Apps hosts, e.g. Claude Desktop).
+
+    The panel lets the instructor browse a course's modules, assignments
+    (drill into submissions and post grades inline), quizzes, pages,
+    announcements, files, and students — with publish buttons for drafts.
+    Pass course_id to open on a specific course. In hosts without MCP Apps
+    support this just returns the course list.
+    """
+    return {
+        "app": "course-explorer",
+        "selected_course_id": course_id,
+        "courses": await _app_courses(),
+    }
+
+
+@mcp.tool(meta=_ui("content-composer"), structured_output=True)
+async def open_content_composer(course_id: int | None = None, content_type: str = "assignment") -> dict[str, Any]:
+    """Open the Content Composer panel (MCP Apps hosts, e.g. Claude Desktop).
+
+    Interactive forms for creating course content: assignments, quizzes
+    (with a question-by-question builder), pages, announcements, discussions,
+    and modules. Everything except announcements is created as an unpublished
+    draft unless the instructor ticks "publish". content_type picks the
+    starting tab: "assignment", "quiz", "page", "announcement", "discussion",
+    or "module". In hosts without MCP Apps support this just returns the
+    course list.
+    """
+    return {
+        "app": "content-composer",
+        "selected_course_id": course_id,
+        "content_type": content_type,
+        "courses": await _app_courses(),
     }
 
 
