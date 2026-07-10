@@ -82,7 +82,7 @@ Never commit `.env` — it is gitignored here on purpose.
 This repo is its own marketplace. In Claude Code:
 
 ```
-/plugin marketplace add anoted/canvas-course-manager
+/plugin marketplace add anoted/Canvas_Course_Manager_Plugin
 /plugin install canvas-course-manager@canvas-tools
 ```
 

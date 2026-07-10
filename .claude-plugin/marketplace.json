@@ -7,7 +7,7 @@
   },
   "metadata": {
     "description": "Marketplace for Canvas LMS tooling for Claude — this repository hosts the canvas-course-manager plugin and serves as its own marketplace.",
-    "version": "1.1.0"
+    "version": "1.1.1"
   },
   "plugins": [
     {

@@ -1,14 +1,14 @@
 {
   "name": "canvas-course-manager",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Create, review, grade, and manage Canvas LMS coursework from Claude: assignments, quizzes, modules, pages, files, and announcements, with a draft → review → publish pipeline, inline chart rendering, and interactive MCP Apps panels (course explorer, content composer) in Claude Desktop.",
   "author": {
     "name": "Anoted",
     "email": "nobel.cse.16@gmail.com",
     "url": "https://github.com/anoted"
   },
-  "homepage": "https://github.com/anoted/canvas-course-manager",
-  "repository": "https://github.com/anoted/canvas-course-manager",
+  "homepage": "https://github.com/anoted/Canvas_Course_Manager_Plugin",
+  "repository": "https://github.com/anoted/Canvas_Course_Manager_Plugin",
   "license": "MIT",
   "keywords": ["canvas", "lms", "education", "teaching", "grading", "quiz", "mcp", "mcp-apps"]
 }

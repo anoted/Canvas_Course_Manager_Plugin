@@ -79,6 +79,13 @@
     border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:7px 11px; font-size:12.5px;
   }
   #toast.err { border-left-color:var(--crit); }
+  #ask {
+    position:fixed; left:16px; bottom:12px; right:16px; z-index:6; display:none;
+    background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--warn);
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:8px 11px;
+    font-size:12.5px; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  #ask .q { margin-right:auto; }
 </style>
 </head>
 <body>
@@ -89,6 +96,7 @@
   </header>
   <nav id="tabs"></nav>
   <main id="content"><div class="note">Loading courses&hellip;</div></main>
+  <div id="ask"><span class="q"></span><button class="btn primary" id="askYes">Confirm</button><button class="btn" id="askNo">Cancel</button></div>
   <div id="toast"></div>
 
 <script>/*__MCP_BRIDGE__*/</script>
@@ -182,6 +190,26 @@
 
   function call(tool, args) { return MCPApp.callTool(tool, args).then(MCPApp.dataOf); }
 
+  /* Inline confirm bar — native confirm() is silently blocked in sandboxed
+     iframes without allow-modals, so never rely on it here. */
+  var askPending = null;
+  function ask(msg) {
+    if (askPending) askPending(false); // a newer prompt supersedes the old one
+    var bar = $("ask");
+    bar.querySelector(".q").textContent = msg;
+    bar.style.display = "flex";
+    sized();
+    return new Promise(function (resolve) {
+      askPending = function (v) {
+        askPending = null;
+        bar.style.display = "none";
+        resolve(v);
+      };
+    });
+  }
+  $("askYes").addEventListener("click", function () { if (askPending) askPending(true); });
+  $("askNo").addEventListener("click", function () { if (askPending) askPending(false); });
+
   function togglePanel(anchorRow, build) {
     // one collapsible panel row under a table row; build(container) fills it once
     var next = anchorRow.nextSibling;
@@ -218,9 +246,11 @@
       hd.appendChild(h("span", "muted", (m.items_count != null ? m.items_count : (m.items || []).length) + " items"));
       if (!m.published) {
         hd.appendChild(btn("Publish", function () {
-          if (!confirm('Publish module "' + m.name + '" to students?')) return;
-          return call("update_module", { course_id: state.courseId, module_id: m.id, published: true })
-            .then(function () { toast("Module published."); invalidate(); load(); });
+          return ask('Publish module "' + m.name + '" to students?').then(function (ok) {
+            if (!ok) return;
+            return call("update_module", { course_id: state.courseId, module_id: m.id, published: true })
+              .then(function () { toast("Module published."); invalidate(); load(); });
+          });
         }));
       }
       var card = h("div", "card", hd);
@@ -261,13 +291,16 @@
         btn("Post", function () {
           var grade = g.value.trim();
           if (!grade) throw new Error("Enter a grade first (points, % or letter).");
-          if (!confirm("Post grade " + grade + " for " + (s.user_name || s.user_id) + "? This writes to the gradebook.")) return;
-          return call("grade_submission", {
-            course_id: state.courseId, assignment_id: a.id, user_id: s.user_id,
-            grade: grade, comment: c.value.trim() || null
-          }).then(function (r) {
-            scoreCell.textContent = r && r.score != null ? String(r.score) : grade;
-            toast("Grade posted for " + (s.user_name || s.user_id) + ".");
+          return ask("Post grade " + grade + " for " + (s.user_name || s.user_id) +
+              "? This writes to the gradebook.").then(function (ok) {
+            if (!ok) return;
+            return call("grade_submission", {
+              course_id: state.courseId, assignment_id: a.id, user_id: s.user_id,
+              grade: grade, comment: c.value.trim() || null
+            }).then(function (r) {
+              scoreCell.textContent = r && r.score != null ? String(r.score) : grade;
+              toast("Grade posted for " + (s.user_name || s.user_id) + ".");
+            });
           });
         }, true)
       );
@@ -298,9 +331,11 @@
       );
       if (!a.published) {
         act.append(" ", btn("Publish", function () {
-          if (!confirm('Publish assignment "' + a.name + '" to students?')) return;
-          return call("update_assignment", { course_id: state.courseId, assignment_id: a.id, published: true })
-            .then(function () { toast("Assignment published."); invalidate(); load(); });
+          return ask('Publish assignment "' + a.name + '" to students?').then(function (ok) {
+            if (!ok) return;
+            return call("update_assignment", { course_id: state.courseId, assignment_id: a.id, published: true })
+              .then(function () { toast("Assignment published."); invalidate(); load(); });
+          });
         }));
       }
       tr.append(
@@ -323,9 +358,11 @@
       var act = td("actions");
       if (!q.published) {
         act.appendChild(btn("Publish", function () {
-          if (!confirm('Publish quiz "' + q.title + '" to students?')) return;
-          return call("publish_quiz", { course_id: state.courseId, quiz_id: q.id })
-            .then(function () { toast("Quiz published."); invalidate(); load(); });
+          return ask('Publish quiz "' + q.title + '" to students?').then(function (ok) {
+            if (!ok) return;
+            return call("publish_quiz", { course_id: state.courseId, quiz_id: q.id })
+              .then(function () { toast("Quiz published."); invalidate(); load(); });
+          });
         }));
       }
       tr.append(
@@ -355,9 +392,11 @@
       );
       if (!p.published) {
         act.append(" ", btn("Publish", function () {
-          if (!confirm('Publish page "' + p.title + '" to students?')) return;
-          return call("update_page", { course_id: state.courseId, page_url_or_id: p.url, published: true })
-            .then(function () { toast("Page published."); invalidate(); load(); });
+          return ask('Publish page "' + p.title + '" to students?').then(function (ok) {
+            if (!ok) return;
+            return call("update_page", { course_id: state.courseId, page_url_or_id: p.url, published: true })
+              .then(function () { toast("Page published."); invalidate(); load(); });
+          });
         }));
       }
       tr.append(

@@ -99,6 +99,13 @@
     border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:7px 11px; font-size:12.5px;
   }
   #toast.err { border-left-color:var(--crit); }
+  #ask {
+    position:fixed; left:16px; bottom:12px; right:16px; z-index:6; display:none;
+    background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--warn);
+    border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.18); padding:8px 11px;
+    font-size:12.5px; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  #ask .q { margin-right:auto; }
 </style>
 </head>
 <body>
@@ -108,6 +115,7 @@
   </header>
   <nav id="tabs"></nav>
   <main id="content"><div class="note">Loading courses&hellip;</div></main>
+  <div id="ask"><span class="q"></span><button class="btn primary" id="askYes">Confirm</button><button class="btn" id="askNo">Cancel</button></div>
   <div id="toast"></div>
 
 <script>/*__MCP_BRIDGE__*/</script>
@@ -154,6 +162,26 @@
   function sized() { if (window.MCPApp) MCPApp.reportSize(); }
 
   function call(tool, args) { return MCPApp.callTool(tool, args).then(MCPApp.dataOf); }
+
+  /* Inline confirm bar — native confirm() is silently blocked in sandboxed
+     iframes without allow-modals, so never rely on it here. */
+  var askPending = null;
+  function ask(msg) {
+    if (askPending) askPending(false); // a newer prompt supersedes the old one
+    var bar = $("ask");
+    bar.querySelector(".q").textContent = msg;
+    bar.style.display = "flex";
+    sized();
+    return new Promise(function (resolve) {
+      askPending = function (v) {
+        askPending = null;
+        bar.style.display = "none";
+        resolve(v);
+      };
+    });
+  }
+  $("askYes").addEventListener("click", function () { if (askPending) askPending(true); });
+  $("askNo").addEventListener("click", function () { if (askPending) askPending(false); });
 
   function btn(label, fn, primary) {
     var b = h("button", "btn" + (primary ? " primary" : ""), label);
@@ -254,6 +282,10 @@
     var wrap = h("div", "inline");
     var sel = h("select");
     sel.appendChild(opt("", "— none —", true));
+    // populate from cache right away — this select may be built after modules loaded
+    (state.modules[state.courseId] || []).forEach(function (m) {
+      sel.appendChild(opt(String(m.id), m.name || ("module " + m.id)));
+    });
     wrap.appendChild(sel);
     wrap.appendChild(btn("↻", function () { return loadModules(true); }));
     wrap.sel = sel;
@@ -347,18 +379,21 @@
         .filter(function (s) { return s; });
       if (exts.length && stUpload.input.checked) args.allowed_extensions = exts;
       var mid = moduleIdOf(msel); if (mid != null) args.module_id = mid;
-      if (args.published && !confirm('Publish "' + args.name + '" immediately? Students will see it right away.'))
-        return;
-      return call("create_assignment", args).then(function (a) {
-        showResult(pane, "Assignment", a.name || args.name, [
-          ["id", a.id], ["points", a.points_possible],
-          ["due", a.due_at ? new Date(a.due_at).toLocaleString() : null],
-          ["state", a.published ? "published" : "draft"],
-          ["module", mid != null ? "added" : null]
-        ], a.html_url);
-        name.value = ""; desc.value = "";
-        toast("Assignment created" + (a.published ? " and published." : " as a draft."));
-      });
+      function create() {
+        return call("create_assignment", args).then(function (a) {
+          showResult(pane, "Assignment", a.name || args.name, [
+            ["id", a.id], ["points", a.points_possible],
+            ["due", a.due_at ? new Date(a.due_at).toLocaleString() : null],
+            ["state", a.published ? "published" : "draft"],
+            ["module", mid != null ? "added" : null]
+          ], a.html_url);
+          name.value = ""; desc.value = "";
+          toast("Assignment created" + (a.published ? " and published." : " as a draft."));
+        });
+      }
+      if (!args.published) return create();
+      return ask('Publish "' + args.name + '" immediately? Students will see it right away.')
+        .then(function (ok) { if (ok) return create(); });
     }, true));
 
     frm.appendChild(h("div", "full", act));
@@ -386,7 +421,14 @@
 
   function drawQuizStage(pane) {
     var old = pane.querySelector(".stage");
-    if (old) old.remove();
+    if (old) {
+      // drop the old stage's module select from the refresh list before discarding it
+      var oldSels = old.querySelectorAll("select");
+      state.moduleSels = state.moduleSels.filter(function (s) {
+        return Array.prototype.indexOf.call(oldSels, s) === -1;
+      });
+      old.remove();
+    }
     var stage = h("div", "stage");
     stage.appendChild(state.quiz ? quizBuilder(pane) : quizCreateForm(pane));
     pane.appendChild(stage);
@@ -594,9 +636,11 @@
 
     var done = h("div", "actions",
       btn("Publish quiz", function () {
-        if (!qz.questions.length && !confirm("This quiz has no questions yet. Publish anyway?")) return;
-        if (!confirm('Publish "' + qz.title + '" (' + qz.questions.length +
-            " questions, " + qz.points + " points)? Students will be able to take it.")) return;
+        var msg = (qz.questions.length ? "" : "This quiz has NO questions yet. ") +
+          'Publish "' + qz.title + '" (' + qz.questions.length + " questions, " +
+          qz.points + " points)? Students will be able to take it.";
+        return ask(msg).then(function (ok) {
+        if (!ok) return;
         return call("publish_quiz", { course_id: qz.courseId, quiz_id: qz.id }).then(function (q) {
           showResult(pane, "Quiz", q.title || qz.title, [
             ["id", q.id], ["questions", q.question_count != null ? q.question_count : qz.questions.length],
@@ -606,6 +650,7 @@
           state.quiz = null;
           drawQuizStage(pane);
           toast("Quiz published.");
+        });
         });
       }, true),
       btn("Keep as draft & finish", function () {
@@ -617,9 +662,11 @@
         toast("Quiz saved as a draft.");
       }),
       btn("Discard builder", function () {
-        if (!confirm("Stop editing this quiz? The draft stays in Canvas as-is.")) return;
-        state.quiz = null;
-        drawQuizStage(pane);
+        return ask("Stop editing this quiz? The draft stays in Canvas as-is.").then(function (ok) {
+          if (!ok) return;
+          state.quiz = null;
+          drawQuizStage(pane);
+        });
       }));
 
     wrap.append(head, frm, h("div", null, " "), done);
@@ -678,17 +725,19 @@
       };
       var d = isoFromLocal(delay.value);
       if (d) args.delayed_post_at = d;
-      var ok = d
-        ? confirm('Schedule "' + args.title + '" to post at ' + new Date(d).toLocaleString() + "?")
-        : confirm('Post "' + args.title + '" now? Students will see it immediately.');
-      if (!ok) return;
-      return call("create_announcement", args).then(function (a) {
-        showResult(pane, "Announcement", a.title || args.title, [
-          ["id", a.id],
-          ["posts", a.delayed_post_at ? new Date(a.delayed_post_at).toLocaleString() : "immediately"]
-        ], a.html_url);
-        title.value = ""; msg.value = ""; delay.value = "";
-        toast(d ? "Announcement scheduled." : "Announcement posted.");
+      var q = d
+        ? 'Schedule "' + args.title + '" to post at ' + new Date(d).toLocaleString() + "?"
+        : 'Post "' + args.title + '" now? Students will see it immediately.';
+      return ask(q).then(function (ok) {
+        if (!ok) return;
+        return call("create_announcement", args).then(function (a) {
+          showResult(pane, "Announcement", a.title || args.title, [
+            ["id", a.id],
+            ["posts", a.delayed_post_at ? new Date(a.delayed_post_at).toLocaleString() : "immediately"]
+          ], a.html_url);
+          title.value = ""; msg.value = ""; delay.value = "";
+          toast(d ? "Announcement scheduled." : "Announcement posted.");
+        });
       });
     }, true));
     frm.appendChild(h("div", "full", act));
@@ -715,15 +764,18 @@
         threaded: threaded.input.checked,
         published: pub.input.checked
       };
-      if (args.published && !confirm('Publish "' + args.title + '" immediately? Students can reply right away.'))
-        return;
-      return call("create_discussion", args).then(function (dsc) {
-        showResult(pane, "Discussion", dsc.title || args.title, [
-          ["id", dsc.id], ["state", dsc.published ? "published" : "draft"]
-        ], dsc.html_url);
-        title.value = ""; msg.value = "";
-        toast("Discussion created" + (dsc.published ? " and published." : " as a draft."));
-      });
+      function create() {
+        return call("create_discussion", args).then(function (dsc) {
+          showResult(pane, "Discussion", dsc.title || args.title, [
+            ["id", dsc.id], ["state", dsc.published ? "published" : "draft"]
+          ], dsc.html_url);
+          title.value = ""; msg.value = "";
+          toast("Discussion created" + (dsc.published ? " and published." : " as a draft."));
+        });
+      }
+      if (!args.published) return create();
+      return ask('Publish "' + args.title + '" immediately? Students can reply right away.')
+        .then(function (ok) { if (ok) return create(); });
     }, true));
     frm.appendChild(h("div", "full", act));
     pane.appendChild(frm);
